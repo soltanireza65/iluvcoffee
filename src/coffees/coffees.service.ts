@@ -3,9 +3,10 @@ import { CreateCoffeeDto } from './dto/create-coffee.dto';
 import { UpdateCoffeeDto } from './dto/update-coffee.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Coffee } from './entities/coffee.entity';
-import { Repository } from 'typeorm';
+import { Connection, DataSource, Repository } from 'typeorm';
 import { Flavor } from './entities/flavor.entity';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query';
+import { Event } from 'src/events/entities/event.entity';
 
 @Injectable()
 export class CoffeesService {
@@ -13,7 +14,11 @@ export class CoffeesService {
     @InjectRepository(Coffee)
     private readonly _repo: Repository<Coffee>,
     @InjectRepository(Coffee)
-    private readonly _flavorRepo: Repository<Flavor>
+    private readonly _flavorRepo: Repository<Flavor>,
+
+    private readonly _connection: Connection,
+
+    private _dataSource: DataSource
   ) { }
   async create(createCoffeeDto: CreateCoffeeDto) {
     const flavors = await Promise.all(
@@ -58,6 +63,31 @@ export class CoffeesService {
     console.log("🚀 ~ CoffeesService ~ removeAll ~ coffees:", coffees)
     return coffees.map(async ({ id }) => { await this.remove(id as any) })
     // return this._repo.delete()
+  }
+
+  private async recommendCoffee(coffee: Coffee) {
+    const queryRunner = this._dataSource.createQueryRunner()
+
+    await queryRunner.connect()
+    await queryRunner.startTransaction()
+
+    try {
+      coffee.recommendations++;
+
+      const recommentEvent = new Event();
+      recommentEvent.name = 'coffee-recommendation';
+      recommentEvent.type = 'coffee';
+      recommentEvent.payload = { coffeeId: coffee.id };
+
+      await queryRunner.manager.save(coffee);
+      await queryRunner.manager.save(recommentEvent);
+
+      await queryRunner.commitTransaction()
+    } catch (err) {
+      await queryRunner.rollbackTransaction()
+    } finally {
+      await queryRunner.release()
+    }
   }
 
   private async preloadFlavorByName(name: string): Promise<Flavor> {
