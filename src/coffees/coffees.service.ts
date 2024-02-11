@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Coffee } from './entities/coffee.entity';
 import { Repository } from 'typeorm';
 import { Flavor } from './entities/flavor.entity';
+import { PaginationQueryDto } from 'src/common/dto/pagination-query';
 
 @Injectable()
 export class CoffeesService {
@@ -22,8 +23,12 @@ export class CoffeesService {
     return this._repo.save(coffee)
   }
 
-  findAll() {
-    return this._repo.find({ relations: ['flavors'] })
+  findAll(paginationQuery?: PaginationQueryDto) {
+    return this._repo.find({
+      relations: ['flavors'],
+      skip: paginationQuery.offset,
+      take: paginationQuery.limit
+    })
   }
 
   async findOne(id: number) {
@@ -47,7 +52,13 @@ export class CoffeesService {
     const coffee = await this.findOne(id)
     return this._repo.remove(coffee)
   }
-
+  async removeAll() {
+    const coffees = await this.findAll()
+    // return coffees
+    console.log("🚀 ~ CoffeesService ~ removeAll ~ coffees:", coffees)
+    return coffees.map(async ({ id }) => { await this.remove(id as any) })
+    // return this._repo.delete()
+  }
 
   private async preloadFlavorByName(name: string): Promise<Flavor> {
     const existingFlavor = await this._flavorRepo.findOne({ where: { name } })
